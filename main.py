@@ -6,8 +6,13 @@ from nba_api.stats.endpoints import commonteamroster, teamgamelog, playergamelog
 
 
 def get_player_name_by_id(player_id):
-    player_info = players.find_players_by_id(player_id)
-    return player_info[0]['full_name'] if player_info else "Unknown Player"
+    try:
+        player = players.find_player_by_id(player_id)
+        return player[3]
+    except Exception as e:
+        print(f"Error getting player name: {e}")
+        return "player name not found"
+
 # Function to get team ID by team name
 def get_team_id(team_name):
     nba_teams = teams.get_teams()
@@ -37,32 +42,57 @@ def display_stats():
     global data_df
     try:
         if var_choice.get() == 'Team Stats':
-            team_id = get_team_id(combo_team.get())
-            matchup = entry_matchup.get()
+                # allow user to enter season and matchup (optional) also allow user to select team from dropdown if no season or matchup entered show all games for team
+            team_name = combo_team.get()
+            team_id = get_team_id(team_name)
             season = entry_season.get()
-            if team_id:
-                team_stats = teamgamelog.TeamGameLog(team_id=team_id, season=season)
-                data = team_stats.get_data_frames()[0]
-                if matchup:  # Filter by matchup if provided
-                    data = data[data['MATCHUP'].str.contains(matchup)]
-                text_output.delete('1.0', tk.END)
-                text_output.insert(tk.END, data.to_string())
-                data_df = data
-        elif var_choice.get() == 'Player Stats':
-            selected_indices = listbox_players.curselection()
-            selected_players = [listbox_players.get(i) for i in selected_indices]
-            if not selected_players:
+            matchup = entry_matchup.get()
+            if not team_id:
                 return
-            data_frames = []
-            for player_name in selected_players:
-                player_id = players.find_players_by_full_name(player_name)[0]['id']
-                player_stats = playergamelog.PlayerGameLog(player_id=player_id).get_data_frames()[0]
-                # player_stats['Player Name'] = get_player_name_by_id(player_id)  # Add player name column
-                data_frames.append(player_stats)
-            data_df = pd.concat(data_frames)
+            if not season:
+                season = '2021-22'
+                data_df = teamgamelog.TeamGameLog(team_id=team_id, season=season, season_type_all_star='Regular Season').get_data_frames()[0]
+                data_df['TEAM_NAME'] = team_name
+                data_df['PLAYER_NAME'] = data_df['TEAM_NAME'].apply(lambda x: get_player_name_by_id(x))
+            if matchup:
+                team_games = teamgamelog.TeamGameLog(team_id=team_id, season=season, season_type_all_star='Regular Season', date_from_nullable=matchup).get_data_frames()[0]
+                data_df = team_games
+                data_df['TEAM_NAME'] = team_name
+                data_df['PLAYER_NAME'] = data_df['TEAM_NAME'].apply(lambda x: get_player_name_by_id(x))
+            else:
+                team_games = teamgamelog.TeamGameLog(team_id=team_id, season=season, season_type_all_star='Regular Season').get_data_frames()[0]
+                data_df = team_games
+                data_df['TEAM_NAME'] = team_name
+                data_df['PLAYER_NAME'] = data_df['TEAM_NAME'].apply(lambda x: get_player_name_by_id(x))
             text_output.delete('1.0', tk.END)
-            text_output.insert(tk.END, data_df.to_string())
+            text_output.insert(tk.END, team_games.to_string())
+
+        elif var_choice.get() == 'Player Stats':
+    #        show player stats for selected players only allow user to select players from listbox if no players selected show all players for team also allow user to enter season and matchup (optional) if no season or matchup entered show all games for team also allow user to select plaeer stats for all previous teams
+            player_name = listbox_players.get(tk.ACTIVE)
+            player_id = players.find_players_by_full_name(player_name)[0]['id']
+            print(player_id)
+            season = entry_season.get()
+            matchup = entry_matchup.get()
+            if not player_id:
+                return
+            if not season:
+                season = '2021-22'
+                data_df = playergamelog.PlayerGameLog(player_id=player_id, season=season, season_type_all_star='Regular Season').get_data_frames()[0]
+                data_df['PLAYER_NAME'] = player_name
+            if matchup:
+                player_games = playergamelog.PlayerGameLog(player_id=player_id, season=season, season_type_all_star='Regular Season', date_from_nullable=matchup).get_data_frames()[0]
+                data_df = player_games
+                data_df['PLAYER_NAME'] = player_name
+            else:
+                player_games = playergamelog.PlayerGameLog(player_id=player_id, season=season, season_type_all_star='Regular Season').get_data_frames()[0]
+                data_df = player_games
+                data_df['PLAYER_NAME'] = player_name
+            text_output.delete('1.0', tk.END)
+            text_output.insert(tk.END, player_games.to_string())
+            text_output.insert(tk.END, f"\nPlayer Name: {player_name}\n")
     except Exception as e:
+        text_output.delete('1.0', tk.END)
         text_output.insert(tk.END, f"Error fetching data: {e}\n")
 
 # Function to save data as CSV
